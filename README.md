@@ -24,6 +24,8 @@ gnuplot lightsensor.plot
 
 Open generated lightsensor.png
 
+![lightsensor](https://user-images.githubusercontent.com/3620471/141604928-b5731606-a28f-4e16-ad55-f0302af2047d.png)
+
 Automatically update lightsensor.png as you change lightsensor.plot:
 
 ```bash

@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -48,7 +49,7 @@ func (v *float) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return nil
 	}
 
-	i, err := strconv.ParseFloat(s, 32)
+	i, err := strconv.ParseFloat(s, 64)
 	if err != nil {
 		return errors.Wrap(err, "failed to parse float")
 	}
@@ -58,22 +59,30 @@ func (v *float) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 func main() {
-	log.Println("Starting")
+	var (
+		url        string
+		maxRetries int
+		delay      time.Duration
+	)
 
-	if err := run(); err != nil {
+	flag.StringVar(&url, "url", "http://lunarsensor.local/events", "Lunarsensor URL")
+	flag.IntVar(&maxRetries, "max-retries", 5, "Max retries for connecting to Lunarsensor")
+	flag.DurationVar(&delay, "delay", 1*time.Minute, "Delay between retries")
+
+	flag.Parse()
+
+	if err := run(url, maxRetries, delay); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run() error {
-	var (
-		url        = "http://192.168.0.221/events"
-		maxRetries = 5
-		msgs       = make(chan *Message)
-		errs       = make(chan error, 1)
-	)
+func run(url string, maxRetries int, delay time.Duration) error {
+	msgs := make(chan *Message)
+	errs := make(chan error, 1)
 
-	reader := mustCreateStreamReader(url, maxRetries)
+	log.Println("Starting")
+
+	reader := mustCreateStreamReader(url, maxRetries, delay)
 	go readStream(reader, msgs, errs)
 
 	for {
@@ -84,19 +93,19 @@ func run() error {
 			}
 		case err := <-errs:
 			log.Printf("Error: %s\n", err)
-			reader := mustCreateStreamReader(url, maxRetries)
+			reader := mustCreateStreamReader(url, maxRetries, delay)
 			go readStream(reader, msgs, errs)
 		}
 	}
 }
 
-func mustCreateStreamReader(url string, maxRetries int) *bufio.Reader {
+func mustCreateStreamReader(url string, maxRetries int, delay time.Duration) *bufio.Reader {
 	var reader *bufio.Reader
 	err := try.Do(func(attempt int) (retry bool, err error) {
 		retry = attempt < maxRetries
 		reader, err = createStreamReader(url)
 		if err != nil && retry {
-			time.Sleep(1 * time.Minute)
+			time.Sleep(delay)
 		}
 		return
 	})

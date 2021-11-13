@@ -4,11 +4,18 @@ Attempt to plot light sensor data from [lunarsensor](https://lunar.fyi/sensor).
 
 Buy the components, install firmware on Ambient Light Sensor.
 
-Run the go app that polls data from `lunarsensor.local` host in your local network (for as long as you want to collect the data).
+Build the go app that polls data from `lunarsensor.local` host in your local network:
 
 ```bash
-go run . | tee lightsensor.data
+go build -o lightsensor main.go
 ```
+
+Run the app for as long as you want to collect the data:
+
+```bash
+./lightsensor | tee lightsensor.data
+```
+
 Plot the data with [gnuplot](http://www.gnuplot.info):
 
 ```bash

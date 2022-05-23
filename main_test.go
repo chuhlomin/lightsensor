@@ -16,7 +16,7 @@ func TestFloat(t *testing.T) {
 	var v float
 	err := yaml.Unmarshal([]byte("0.839524"), &v)
 	assert.Nil(t, err)
-	assert.Equal(t, float(0.83952397108078), v)
+	assert.Equal(t, float(0.839524), v)
 
 	err = yaml.Unmarshal([]byte("NaN"), &v)
 	assert.Nil(t, err)
@@ -43,7 +43,7 @@ data: {"id":"sensor-ambient_light_tsl2591","state":"1","value":0.839524}`,
 				Data: Data{
 					ID:    "sensor-ambient_light_tsl2591",
 					State: "1",
-					Value: 0.83952397108078,
+					Value: 0.839524,
 				},
 			},
 		},
@@ -115,7 +115,7 @@ data: {"id":"sensor-ambient_light_tsl2561","state":"nan lx","value":NaN}
 					Data: Data{
 						ID:    "sensor-ambient_light_tsl2591",
 						State: "1",
-						Value: 0.83952397108078,
+						Value: 0.839524,
 					},
 				},
 				{

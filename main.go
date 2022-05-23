@@ -4,13 +4,15 @@ import (
 	"bufio"
 	"bytes"
 	"flag"
-	"fmt"
 	"log"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"gopkg.in/matryer/try.v1"
 	"gopkg.in/yaml.v3"
 )
@@ -60,52 +62,73 @@ func (v *float) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 func main() {
 	var (
-		url        string
+		url, addr  string
 		maxRetries int
 		delay      time.Duration
 	)
 
+	flag.StringVar(&addr, "addr", ":8080", "address to listen on")
 	flag.StringVar(&url, "url", "http://lunarsensor.local/events", "Lunarsensor URL")
 	flag.IntVar(&maxRetries, "max-retries", 5, "Max retries for connecting to Lunarsensor")
 	flag.DurationVar(&delay, "delay", 1*time.Minute, "Delay between retries")
 
 	flag.Parse()
 
-	if err := run(url, maxRetries, delay); err != nil {
+	if err := run(addr, url, maxRetries, delay); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(url string, maxRetries int, delay time.Duration) error {
-	msgs := make(chan *Message)
-	errs := make(chan error, 1)
+func run(addr, url string, maxRetries int, delay time.Duration) error {
+	recordMetrics(url, maxRetries, delay)
 
-	log.Println("Starting")
+	http.Handle("/metrics", promhttp.Handler())
 
-	reader := mustCreateStreamReader(url, maxRetries, delay)
-	go readStream(reader, msgs, errs)
+	log.Printf("Listening on %s", addr)
+	return http.ListenAndServe(addr, nil)
+}
 
-	for {
-		select {
-		case m := <-msgs:
-			if m.Event == EventState && m.Data.State != StateNanLx {
-				fmt.Printf("%d %f\n", time.Now().UnixMilli(), m.Data.Value)
+var (
+	lightLevelGauge = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "light_level",
+		Help: "Light level in lux",
+	})
+)
+
+func recordMetrics(url string, maxRetries int, delay time.Duration) {
+	go func() {
+		msgs := make(chan *Message)
+		errs := make(chan error, 1)
+
+		log.Println("Starting")
+
+		reader := mustCreateStreamReader(url, maxRetries, delay)
+		go readStream(reader, msgs, errs)
+
+		for {
+			select {
+			case m := <-msgs:
+				if m.Event == EventState && m.Data.State != StateNanLx {
+					lightLevelGauge.Set(float64(m.Data.Value))
+				}
+			case err := <-errs:
+				log.Printf("Error: %s\n", err)
+				reader := mustCreateStreamReader(url, maxRetries, delay)
+				go readStream(reader, msgs, errs)
 			}
-		case err := <-errs:
-			log.Printf("Error: %s\n", err)
-			reader := mustCreateStreamReader(url, maxRetries, delay)
-			go readStream(reader, msgs, errs)
 		}
-	}
+	}()
 }
 
 func mustCreateStreamReader(url string, maxRetries int, delay time.Duration) *bufio.Reader {
 	var reader *bufio.Reader
 	err := try.Do(func(attempt int) (retry bool, err error) {
 		retry = attempt < maxRetries
+		log.Printf("Connecting to Lunarsensor %q (attempt %d/%d)", url, attempt, maxRetries)
 		reader, err = createStreamReader(url)
 		if err != nil && retry {
-			time.Sleep(delay)
+			log.Printf("Sleep %s before retry %d\n", delay, attempt)
+			time.Sleep(delay * time.Duration(attempt))
 		}
 		return
 	})
